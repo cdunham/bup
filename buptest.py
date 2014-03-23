@@ -2,7 +2,7 @@
 from __future__ import absolute_import, print_function
 from collections import namedtuple
 from contextlib import contextmanager
-from os.path import basename, dirname, realpath
+from os.path import abspath, basename, dirname, realpath
 from pipes import quote
 from subprocess import PIPE, Popen
 from traceback import extract_stack
@@ -11,6 +11,9 @@ import errno, os, subprocess, sys, tempfile
 from wvtest import WVPASSEQ, wvfailure_count
 
 from bup import helpers
+
+
+bup_cmd = abspath(dirname(sys.argv[0]) + '/../bup')
 
 
 @contextmanager
