@@ -15,6 +15,7 @@ from bup import compat
 # This function should really be in helpers, not in bup.options.  But we
 # want options.py to be standalone so people can include it in other projects.
 from bup.options import _tty_width as tty_width
+from bup.options import prose_width as prose_width
 
 
 class Nonlocal:
@@ -960,7 +961,7 @@ def columnate(l, prefix):
         return ""
     l = l[:]
     clen = max(len(s) for s in l)
-    ncols = (tty_width() - len(prefix)) // (clen + 2)
+    ncols = (prose_width() - len(prefix)) // (clen + 2)
     if ncols <= 1:
         ncols = 1
         clen = 0

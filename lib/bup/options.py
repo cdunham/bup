@@ -138,16 +138,21 @@ def _atoi(v):
 
 if not fcntl and termios:
     def _tty_width():
-        return 70
+        return 80
+    def prose_width():
+        return 76
 else:
     def _tty_width():
         s = struct.pack("HHHH", 0, 0, 0, 0)
         try:
             s = fcntl.ioctl(sys.stderr.fileno(), termios.TIOCGWINSZ, s)
         except IOError:
-            return 70
+            return 80
         ysize, xsize, ypix, xpix = struct.unpack('HHHH', s)
-        return xsize or 70
+        return xsize or 80
+
+    def prose_width():
+        return max(1, _tty_width() - 4)
 
 
 class Options:
@@ -230,9 +235,10 @@ class Options:
                 if has_parm:
                     flags_nice += ' ...'
                 prefix = '    %-20s  ' % flags_nice
-                argtext = '\n'.join(textwrap.wrap(extra, width=_tty_width(),
-                                                initial_indent=prefix,
-                                                subsequent_indent=' '*28))
+                argtext = '\n'.join(textwrap.wrap(extra,
+                                                  width=prose_width(),
+                                                  initial_indent=prefix,
+                                                  subsequent_indent=' '*28))
                 out.append(argtext + '\n')
                 last_was_option = True
             else:
