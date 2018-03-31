@@ -10,6 +10,7 @@ class LocalRepo:
         self.repo_dir = repo_dir or git.repo()
         self._cp = git.cp(self.repo_dir)
         self.rev_list = partial(git.rev_list, repo_dir=self.repo_dir)
+        self.update_ref = partial(git.update_ref, repo_dir=self.repo_dir)
 
     def close(self):
         pass
@@ -25,6 +26,13 @@ class LocalRepo:
 
     def is_remote(self):
         return False
+
+    def new_packwriter(self, compression_level=1,
+                       max_pack_size=None, max_pack_objects=None):
+        return git.PackWriter(repo_dir=self.repo_dir,
+                              compression_level=compression_level,
+                              max_pack_size=max_pack_size,
+                              max_pack_objects=max_pack_objects)
 
     def cat(self, ref):
         """If ref does not exist, yield (None, None, None).  Otherwise yield
@@ -61,6 +69,8 @@ class RemoteRepo:
     def __init__(self, address):
         self.address = address
         self.client = client.Client(address)
+        self.new_packwriter = self.client.new_packwriter
+        self.update_ref = self.client.update_ref
         self.rev_list = self.client.rev_list
 
     def close(self):
