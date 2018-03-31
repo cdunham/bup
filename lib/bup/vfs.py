@@ -576,7 +576,7 @@ def _reverse_suffix_duplicates(strs):
         else:
             ndig = len(str(ndup - 1))
             fmt = '%s-' + '%0' + str(ndig) + 'd'
-            for i in xrange(ndup - 1, -1, -1):
+            for i in range(ndup - 1, -1, -1):
                 yield fmt % (name, i)
 
 def parse_rev(f):
