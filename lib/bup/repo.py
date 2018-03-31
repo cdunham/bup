@@ -23,6 +23,9 @@ class LocalRepo:
     def __exit__(self, type, value, traceback):
         self.close()
 
+    def is_remote(self):
+        return False
+
     def cat(self, ref):
         """If ref does not exist, yield (None, None, None).  Otherwise yield
         (oidx, type, size), and then all of the data associated with
@@ -66,6 +69,9 @@ class RemoteRepo:
 
     def __exit__(self, type, value, traceback):
         self.close()
+
+    def is_remote(self):
+        return True
 
     def cat(self, ref):
         """If ref does not exist, yield (None, None, None).  Otherwise yield
