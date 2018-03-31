@@ -2,10 +2,12 @@
 from __future__ import absolute_import
 import errno, os, re, struct, sys, time, zlib
 
-from bup import git, ssh
+from bup import git, ssh, vint, vfs
+from bup.compat import range
 from bup.helpers import (Conn, atomically_replaced_file, chunkyreader, debug1,
                          debug2, linereader, lines_until_sentinel,
                          mkdirp, progress, qprogress)
+from bup.vint import read_bvec, read_vuint, write_bvec
 
 
 bwlimit = None
@@ -371,6 +373,7 @@ class Client:
         conn = self.conn
         conn.write('refs %s %s\n' % (1 if limit_to_heads else 0,
                                      1 if limit_to_tags else 0))
+        # FIXME: check PIPE_BUF?
         for pattern in patterns:
             assert '\n' not in pattern
             conn.write(pattern)
@@ -434,6 +437,31 @@ class Client:
         if not_ok:
             raise not_ok
         self._not_busy()
+
+    def resolve(self, path, parent=None, want_meta=True, follow=False):
+        self._require_command('resolve')
+        self.check_busy()
+        self._busy = 'resolve'
+        conn = self.conn
+        conn.write('resolve %d %d %d\n' % (1 if want_meta else 0,
+                                           1 if follow else 0,
+                                           1 if parent else 0))
+        if parent:
+            vfs.write_resolution(conn, parent)
+        write_bvec(conn, path)
+        success = read_vuint(conn)
+        if success:
+            result = vfs.read_resolution(conn)
+        else:
+            result = vfs.read_ioerror(conn)
+        # FIXME: confusing
+        not_ok = self.check_ok()
+        if not_ok:
+            raise not_ok
+        self._not_busy()
+        if isinstance(result, vfs.IOError):
+            raise result
+        return result
 
 
 class PackWriter_Remote(git.PackWriter):

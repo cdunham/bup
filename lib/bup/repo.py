@@ -2,7 +2,7 @@
 from __future__ import absolute_import
 from functools import partial
 
-from bup import client, git
+from bup import client, git, vfs
 
 
 class LocalRepo:
@@ -49,6 +49,13 @@ class LocalRepo:
                                  limit_to_tags=limit_to_tags,
                                  repo_dir=self.repo_dir):
             yield ref
+
+    ## Of course, the vfs better not call this...
+    def resolve(self, path, parent=None, want_meta=True, follow=True):
+        ## FIXME: mode_only=?
+        return vfs.resolve(self, path,
+                           parent=parent, want_meta=want_meta, follow=follow)
+
 
 class RemoteRepo:
     def __init__(self, address):
@@ -99,3 +106,8 @@ class RemoteRepo:
                                     limit_to_heads=limit_to_heads,
                                     limit_to_tags=limit_to_tags):
             yield ref
+
+    def resolve(self, path, parent=None, want_meta=True, follow=True):
+        ## FIXME: mode_only=?
+        return self.client.resolve(path, parent=parent, want_meta=want_meta,
+                                   follow=follow)

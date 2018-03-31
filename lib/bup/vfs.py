@@ -53,16 +53,43 @@ from stat import S_IFDIR, S_IFLNK, S_IFREG, S_ISDIR, S_ISLNK, S_ISREG
 from time import localtime, strftime
 import exceptions, re, sys
 
-from bup import client, git, metadata
+from bup import git, metadata
+from bup.compat import range
 from bup.git import BUP_CHUNKED, cp, get_commit_items, parse_commit, tree_decode
 from bup.helpers import debug2, last
 from bup.metadata import Metadata
+from bup.vint import read_bvec, write_bvec
+from bup.vint import read_vint, write_vint
+from bup.vint import read_vuint, write_vuint
 
+# We currently assume that it's always appropriate to just forward IOErrors
+# to a remote client.
 
 class IOError(exceptions.IOError):
     def __init__(self, errno, message, terminus=None):
         exceptions.IOError.__init__(self, errno, message)
         self.terminus = terminus
+
+def write_ioerror(port, ex):
+    assert isinstance(ex, IOError)
+    write_vuint(port,
+                (1 if ex.errno is not None else 0)
+                | (2 if ex.message is not None else 0)
+                | (4 if ex.terminus is not None else 0))
+    if ex.errno is not None:
+        write_vint(port, ex.errno)
+    if ex.message is not None:
+        write_bvec(port, ex.message)
+    if ex.terminus is not None:
+        write_resolution(port, ex.terminus)
+
+def read_ioerror(port):
+    mask = read_vuint(port)
+    no = read_vint(port) if 1 & mask else None
+    msg = read_bvec(port) if 2 & mask else None
+    term = read_resolution(port) if 4 & mask else None
+    return IOError(errno=no, message=msg, terminus=term)
+
 
 default_file_mode = S_IFREG | 0o644
 default_dir_mode = S_IFDIR | 0o755
@@ -225,6 +252,86 @@ Commit = namedtuple('Commit', ('meta', 'oid', 'coid'))
 
 item_types = frozenset((Item, Chunky, Root, Tags, RevList, Commit))
 real_tree_types = frozenset((Item, Commit))
+
+def write_item(port, item):
+    # FIXME: Metadata should handle size?
+    def write_m(m, port):
+        if isinstance(m, Metadata):
+            port.write(b'+')
+            port.write(str(m.size) + '\n' if m.size is not None else '\n')
+            Metadata.write(m, port, include_path=False)
+        else:
+            port.write(b'-' + str(item.meta) + b'\n')
+    kind = type(item)
+    port.write(bytes(kind.__name__) + b'\n')
+    if kind in (Item, Chunky, RevList):
+        assert len(item.oid) == 20
+        port.write(item.oid)
+        write_m(item.meta, port)
+    elif kind in (Root, Tags):
+        write_m(item.meta, port)
+    elif kind == Commit:
+        assert len(item.oid) == 20
+        assert len(item.coid) == 20
+        port.write(item.oid)
+        port.write(item.coid)
+        write_m(item.meta, port)
+    else:
+        assert False
+    
+def read_item(port):
+    # FIXME: Metadata should handle size?
+    def read_m(port):
+        kind = port.read(1)
+        if kind == '-':
+            x = port.readline()
+            assert x.endswith(b'\n')
+            return int(x[:-1])
+        if kind == '+':
+            x = port.readline();
+            assert x.endswith(b'\n')
+            m = Metadata.read(port)
+            if x != '\n':
+                m.size = int(x[:-1])
+            return m
+        assert False
+    kind = port.readline()
+    if kind.endswith(b'\n'):
+        kind = kind[:-1]
+    if kind == b'Item':
+        return Item(oid=port.read(20), meta=read_m(port))
+    if kind == b'Chunky':
+        return Chunky(oid=port.read(20), meta=read_m(port))
+    if kind == b'RevList':
+        return RevList(oid=port.read(20), meta=read_m(port))
+    if kind == b'Root':
+        return Root(meta=read_m(port))
+    if kind == b'Tags':
+        return Tags(meta=read_m(port))
+    if kind == b'Commit':
+        return Commit(oid=port.read(20), coid=port.read(20), meta=read_m(port))
+    assert False
+
+def write_resolution(port, resolution):
+    write_vuint(port, len(resolution))
+    for name, item in resolution:
+        write_bvec(port, name)
+        if item:
+            write_vuint(port, 1)
+            write_item(port, item)
+        else:
+            write_vuint(port, 0)
+
+def read_resolution(port):
+    n = read_vuint(port)
+    result = []
+    for i in range(n):
+        name = read_bvec(port)
+        have_item = read_vuint(port)
+        item = read_item(port) if have_item else None
+        result.append((name, item))
+    return tuple(result)
+
 
 _root = Root(meta=default_dir_mode)
 _tags = Tags(meta=default_dir_mode)
@@ -905,6 +1012,10 @@ def resolve(repo, path, parent=None, want_meta=True, follow=True):
     needed, make a copy via item.meta.copy() and modify that instead.
 
     """
+    if repo.is_remote():
+        # Redirect to the more efficient remote version
+        return repo.resolve(path, parent=parent, want_meta=want_meta,
+                            follow=follow)
     result = _resolve_path(repo, path, parent=parent, want_meta=want_meta,
                            follow=follow)
     _, leaf_item = result[-1]

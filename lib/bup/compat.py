@@ -12,6 +12,8 @@ py3 = py_maj >= 3
 if py3:
 
     str_type = str
+    range = range
+    from shlex import quote
 
     def add_ex_tb(ex):
         """Do nothing (already handled by Python 3 infrastructure)."""
@@ -27,6 +29,8 @@ if py3:
 else:  # Python 2
 
     str_type = basestring
+    range = xrange
+    from pipes import quote
 
     def add_ex_tb(ex):
         """Add a traceback to ex if it doesn't already have one.  Return ex.
